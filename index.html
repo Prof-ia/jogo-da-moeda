@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jogo de Correspondência de Moedas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Estilos gerais */
+        .draggable {
+            cursor: grab;
+            width: 100px;
+            height: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 5px;
+            font-size: 16px;
+            font-weight: bold;
+            color: #ffffff;
+        }
+        .droppable {
+            min-height: 150px;
+            border: 2px dashed #4a5568;
+            padding: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+        }
+        .correct {
+            background-color: #48bb78;
+        }
+        .wrong {
+            background-color: #f56565;
+        }
+        .reward {
+            display: none;
+            font-size: 24px;
+            color: gold;
+        }
+        /* Responsividade */
+        @media (max-width: 768px) {
+            .draggable {
+                width: 80px;
+                height: 80px;
+                font-size: 14px;
+            }
+            #coins-container {
+                flex-wrap: wrap;
+            }
+        }
+        body {
+            background-color: #f7fafc;
+            color: #2d3748;
+        }
+        .drop-item {
+            position: relative;
+            width: 100px;
+            height: 100px;
+            margin: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            font-weight: bold;
+            /* Removemos a definição de cor aqui */
+        }
+        .remove-btn {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background: red;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen">
+    <div class="bg-white p-6 rounded-lg shadow-md w-full max-w-4xl text-center">
+        <h1 class="text-3xl font-bold mb-4">Jogo de Correspondência de Moedas e Notas</h1>
+
+        <!-- Seletor de dificuldade -->
+        <p class="text-lg mb-4">Selecione a dificuldade:
+            <select id="difficulty-selector" class="p-2 border rounded">
+                <option value="easy">Fácil</option>
+                <option value="medium">Médio</option>
+                <option value="hard">Difícil</option>
+            </select>
+        </p>
+
+        <p class="text-xl mb-6">Arraste e solte as moedas e notas para alcançar o valor de <span id="target-value" class="font-bold"></span>.</p>
+        <p class="text-lg mb-6">Pontuação: <span id="score">0</span> | Recorde: <span id="high-score">0</span></p>
+        <p class="text-lg mb-6">Acertos consecutivos: <span id="streak">0</span> | Erros: <span id="error-count">0</span></p>
+
+        <!-- Temporizador -->
+        <p class="text-lg mb-6">Tempo restante: <span id="timer">60</span> segundos</p>
+        
+        <!-- Contêiner de moedas e notas -->
+        <div id="coins-container" class="flex justify-center mb-6 flex-wrap">
+            <!-- Moedas -->
+            <div id="coin-1" class="draggable bg-yellow-500 rounded-full" draggable="true" data-value="0.01">
+                1 centavo
+            </div>
+            <div id="coin-5" class="draggable bg-yellow-600 rounded-full" draggable="true" data-value="0.05">
+                5 centavos
+            </div>
+            <div id="coin-10" class="draggable bg-yellow-700 rounded-full" draggable="true" data-value="0.10">
+                10 centavos
+            </div>
+            <div id="coin-25" class="draggable bg-yellow-800 rounded-full" draggable="true" data-value="0.25">
+                25 centavos
+            </div>
+            <div id="coin-50" class="draggable bg-yellow-900 rounded-full" draggable="true" data-value="0.50">
+                50 centavos
+            </div>
+            <div id="coin-1-real" class="draggable bg-green-500 rounded-full" draggable="true" data-value="1.00">
+                1 real
+            </div>
+            <!-- Notas -->
+            <div id="note-2" class="draggable bg-blue-400 rounded" draggable="true" data-value="2.00">
+                2 reais
+            </div>
+            <div id="note-5" class="draggable bg-blue-600 rounded" draggable="true" data-value="5.00">
+                5 reais
+            </div>
+            <div id="note-10" class="draggable bg-blue-800 rounded" draggable="true" data-value="10.00">
+                10 reais
+            </div>
+        </div>
+
+        <div id="drop-area" class="droppable bg-gray-200 mb-4">
+            Arraste suas moedas e notas aqui
+        </div>
+
+        <button id="check-result" class="bg-blue-500 text-white p-2 rounded">Verificar Resultado</button>
+        <button id="reset-button" class="bg-red-500 text-white p-2 rounded ml-2">Reiniciar</button>
+        <p id="feedback" class="mt-4 text-xl"></p>
+
+        <p id="reward" class="reward">⭐ Parabéns! Você ganhou uma estrela!</p>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            let score = 0;
+            let highScore = localStorage.getItem('highScore') || 0;
+            let correctStreak = 0;
+            let errorCount = 0;
+            let currentTotal = 0;
+            let targetValue;
+            let timer;
+            let timeLeft = 60;
+
+            const difficultySelector = document.getElementById('difficulty-selector');
+            const highScoreDisplay = document.getElementById('high-score');
+            highScoreDisplay.innerText = highScore;
+
+            // Função para gerar valor aleatório com base na dificuldade
+            function getRandomValue(difficulty) {
+                let valores;
+                if (difficulty === 'easy') {
+                    valores = [0.01, 0.05, 0.10, 0.25, 0.50, 1.00];
+                } else if (difficulty === 'medium') {
+                    valores = [1.00, 2.00, 3.00, 5.00];
+                } else { // 'hard'
+                    valores = [5.00, 7.00, 10.00];
+                }
+                return valores[Math.floor(Math.random() * valores.length)];
+            }
+
+            // Função para exibir corretamente centavos e reais
+            function formatarValor(valor) {
+                if (valor < 1) {
+                    let centavos = Math.round(valor * 100);
+                    let unidade = centavos === 1 ? "centavo" : "centavos";
+                    return `${centavos} ${unidade}`;
+                } else {
+                    let reais = valor.toFixed(2).replace('.', ',');
+                    let unidade = valor === 1.00 ? "real" : "reais";
+                    return `${reais} ${unidade}`;
+                }
+            }
+
+            // Função para resetar o jogo
+            function resetGame() {
+                clearInterval(timer);
+                timeLeft = 60;
+                document.getElementById("timer").innerText = timeLeft;
+                const difficulty = difficultySelector.value;
+                targetValue = getRandomValue(difficulty);
+                document.getElementById("target-value").innerText = formatarValor(targetValue);
+                currentTotal = 0;
+                document.getElementById("drop-area").innerHTML = 'Arraste suas moedas e notas aqui';
+                document.getElementById("feedback").innerText = '';
+                startTimer();
+            }
+
+            // Função para iniciar o temporizador
+            function startTimer() {
+                timer = setInterval(function() {
+                    timeLeft--;
+                    document.getElementById("timer").innerText = timeLeft;
+                    if (timeLeft <= 0) {
+                        clearInterval(timer);
+                        alert('Tempo esgotado!');
+                        penalizarErro();
+                        resetGame();
+                    }
+                }, 1000);
+            }
+
+            // Configurando arrastar e soltar
+            document.querySelectorAll(".draggable").forEach(item => {
+                item.addEventListener("dragstart", function (e) {
+                    e.dataTransfer.setData("value", e.target.getAttribute("data-value"));
+                    const computedStyle = window.getComputedStyle(e.target);
+                    e.dataTransfer.setData("backgroundColor", computedStyle.backgroundColor);
+                    e.dataTransfer.setData("textColor", computedStyle.color);
+                    e.dataTransfer.setData("text", e.target.innerText);
+                    e.dataTransfer.setData("borderRadius", computedStyle.borderRadius);
+                });
+            });
+
+            const dropArea = document.getElementById("drop-area");
+            dropArea.addEventListener("dragover", function (e) {
+                e.preventDefault();
+            });
+
+            dropArea.addEventListener("drop", function (e) {
+                e.preventDefault();
+                const value = parseFloat(e.dataTransfer.getData("value"));
+                const backgroundColor = e.dataTransfer.getData("backgroundColor");
+                const textColor = e.dataTransfer.getData("textColor");
+                const text = e.dataTransfer.getData("text");
+                const borderRadius = e.dataTransfer.getData("borderRadius");
+
+                currentTotal += value;
+
+                const newCoin = document.createElement("div");
+                newCoin.className = "drop-item";
+                newCoin.style.backgroundColor = backgroundColor;
+                newCoin.style.color = textColor;
+                newCoin.style.borderRadius = borderRadius;
+                newCoin.innerText = text;
+                newCoin.setAttribute("data-value", value);
+
+                const removeBtn = document.createElement("button");
+                removeBtn.className = "remove-btn";
+                removeBtn.innerHTML = "&times;";
+                removeBtn.addEventListener("click", function() {
+                    const coinValue = parseFloat(newCoin.getAttribute("data-value"));
+                    currentTotal -= coinValue;
+                    newCoin.remove();
+                });
+                newCoin.appendChild(removeBtn);
+                dropArea.appendChild(newCoin);
+            });
+
+            // Verificando o resultado
+            document.getElementById("check-result").addEventListener("click", function () {
+                const feedback = document.getElementById("feedback");
+                if (currentTotal.toFixed(2) == targetValue.toFixed(2)) {
+                    clearInterval(timer);
+                    let timeBonus = Math.max(timeLeft * 2, 0); // Bônus de tempo
+                    let streakBonus = correctStreak * 5; // Bônus por acertos consecutivos
+                    let totalPoints = 10 + timeBonus + streakBonus;
+                    score += totalPoints;
+                    feedback.innerText = `Parabéns! Você acertou e ganhou ${totalPoints} pontos!`;
+                    feedback.className = "text-green-500 mt-4 text-xl";
+                    correctStreak += 1;
+                    document.getElementById("score").innerText = score;
+                    document.getElementById("streak").innerText = correctStreak;
+
+                    // Atualiza o recorde
+                    if (score > highScore) {
+                        highScore = score;
+                        localStorage.setItem('highScore', highScore);
+                        highScoreDisplay.innerText = highScore;
+                    }
+
+                    // Exibindo recompensa
+                    if (correctStreak % 3 === 0) {
+                        document.getElementById("reward").style.display = "block";
+                    } else {
+                        document.getElementById("reward").style.display = "none";
+                    }
+
+                    // Resetar jogo
+                    resetGame();
+                } else {
+                    feedback.innerText = `Tente novamente. Você colocou ${formatarValor(currentTotal)}.`;
+                    feedback.className = "text-red-500 mt-4 text-xl";
+                    penalizarErro();
+                }
+            });
+
+            // Função para penalizar erro
+            function penalizarErro() {
+                errorCount += 1;
+                document.getElementById("error-count").innerText = errorCount;
+                score = Math.max(score - 5, 0); // Penalidade
+                document.getElementById("score").innerText = score;
+                correctStreak = 0;
+                document.getElementById("streak").innerText = correctStreak;
+            }
+
+            // Botão de reiniciar
+            document.getElementById("reset-button").addEventListener("click", function () {
+                resetGame();
+            });
+
+            // Mudança de dificuldade
+            difficultySelector.addEventListener('change', function() {
+                resetGame();
+            });
+
+            // Inicia o jogo
+            resetGame();
+        });
+    </script>
+</body>
+</html>
